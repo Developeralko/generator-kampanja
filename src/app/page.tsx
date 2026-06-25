@@ -7,9 +7,9 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
-  const [podaci, setPodaci] = useState({ klijent: '', kampanja: '', period: '', napomena: '', link: '' });
+  // Izbacili smo 'period' i dodali 'datumOd' i 'datumDo'
+  const [podaci, setPodaci] = useState({ klijent: '', kampanja: '', datumOd: '', datumDo: '', napomena: '', link: '' });
   
-  // Dodali smo "blic.rs" utm tag
   const [sajtovi, setSajtovi] = useState([
     {
       ime: 'Blic.rs', utm: 'blic.rs', izabran: true,
@@ -92,7 +92,6 @@ export default function Home() {
   ]);
 
   const [gotovMejl, setGotovMejl] = useState('');
-  // Mijenjamo string u Array stringova kako bi pamtili više slika
   const [slikeUrls, setSlikeUrls] = useState<string[]>([]);
   const [istorija, setIstorija] = useState<any[]>([]);
 
@@ -117,7 +116,6 @@ export default function Home() {
     setSajtovi(novi);
   };
 
-  // Nova funkcija za upload više fajlova odjednom
   const handleUpload = async (e: any) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -134,7 +132,6 @@ export default function Home() {
       if (error) {
         alert(`Greška pri uploadu slike ${file.name}: ` + error.message);
       } else {
-        // Magija: dodajemo ?download na kraj kako bi pretraživač skidao fajl umjesto da ga otvara
         const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl + `?download=${cistoIme}`;
         uspjesnoSacuvanih.push(publicUrl);
       }
@@ -172,6 +169,13 @@ export default function Home() {
     return [...kombinovano, ...preostaliPremiums, ...preostaliStandards, ...ostali].join('\n');
   };
 
+  // Pomoćna funkcija koja pretvara YYYY-MM-DD iz kalendara u naš format DD.MM.YYYY.
+  const formatirajDatum = (datum: string) => {
+    if (!datum) return '';
+    const [godina, mesec, dan] = datum.split('-');
+    return `${dan}.${mesec}.${godina}.`;
+  };
+
   const generisiISacuvaj = async () => {
     let osnovniLink = podaci.link.trim();
     if(osnovniLink.includes('?')) osnovniLink = osnovniLink.split('?')[0];
@@ -195,9 +199,16 @@ export default function Home() {
       sajtoviText += sajtDeo;
     });
 
-    let mejl = `Drage kolege,\n\nInfo za postavku kampanje je ispod:\n\nKlijent: ${podaci.klijent}\nKampanja: ${podaci.kampanja}\nPeriod: ${podaci.period}\n\n${podaci.napomena}\n${sajtoviText}`;
+    // Kreiramo string za period od dva odabrana datuma
+    let finalniPeriod = '';
+    if (podaci.datumOd && podaci.datumDo) {
+      finalniPeriod = `${formatirajDatum(podaci.datumOd)} - ${formatirajDatum(podaci.datumDo)}`;
+    } else {
+      finalniPeriod = "Nije definisano";
+    }
+
+    let mejl = `Drage kolege,\n\nInfo za postavku kampanje je ispod:\n\nKlijent: ${podaci.klijent}\nKampanja: ${podaci.kampanja}\nPeriod: ${finalniPeriod}\n\n${podaci.napomena}\n${sajtoviText}`;
     
-    // Dodavanje više vizuala
     if (slikeUrls.length > 0) {
       mejl += `\n\nLinkovi za preuzimanje vizuala (kliknite na link za direktan download):\n`;
       slikeUrls.forEach((url, i) => {
@@ -208,7 +219,7 @@ export default function Home() {
     setGotovMejl(mejl);
 
     await supabase.from('kampanje').insert([
-      { klijent: podaci.klijent, kampanja: podaci.kampanja, period: podaci.period, generisani_mejl: mejl }
+      { klijent: podaci.klijent, kampanja: podaci.kampanja, period: finalniPeriod, generisani_mejl: mejl }
     ]);
 
     ucitajIstoriju();
@@ -226,7 +237,15 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-4 mb-4">
           <input className="border p-2 rounded w-full" name="klijent" placeholder="Klijent" onChange={handleChange} />
           <input className="border p-2 rounded w-full" name="kampanja" placeholder="Kampanja" onChange={handleChange} />
-          <input className="border p-2 rounded w-full" name="period" placeholder="Period" onChange={handleChange} />
+          
+          {/* Novi UI za biranje raspona datuma */}
+          <div className="flex items-center space-x-2 border p-2 rounded bg-white w-full">
+            <span className="text-gray-400 text-sm font-bold">Od:</span>
+            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm" name="datumOd" onChange={handleChange} />
+            <span className="text-gray-400 text-sm font-bold">Do:</span>
+            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm" name="datumDo" onChange={handleChange} />
+          </div>
+
           <input className="border p-2 rounded w-full" name="link" placeholder="Glavni Link (bez UTM)" onChange={handleChange} />
         </div>
         <input className="border p-2 rounded w-full mb-8" name="napomena" placeholder="Napomena (Frekvencija i intenzitet...)" onChange={handleChange} />
@@ -271,7 +290,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Dodali smo 'multiple' opciju u input za fajlove */}
         <div className="mb-6 p-4 border border-dashed border-gray-400 rounded-lg bg-gray-50">
           <p className="font-bold mb-2">Dodaj Vizuale (možeš odabrati više slika istovremeno):</p>
           <input type="file" multiple onChange={handleUpload} className="w-full" />
