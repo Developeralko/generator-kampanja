@@ -119,18 +119,24 @@ export default function Home() {
   const handleUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
-    const fileName = `${Date.now()}-${file.name}`;
-    const { error } = await supabase.storage.from('kreative').upload(fileName, file);
-    if (error) alert("Greška pri uploadu: " + error.message);
-    else {
+    
+    // NOVO: Čistimo ime fajla od razmaka i specijalnih karaktera da spriječimo grešku
+    const cistoIme = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const fileName = `${Date.now()}-${cistoIme}`;
+    
+    const { data, error } = await supabase.storage.from('kreative').upload(fileName, file);
+    
+    if (error) {
+      alert("Greška pri uploadu: " + error.message);
+    } else {
       const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl;
       setSlikaUrl(publicUrl);
-      alert("Vizual je uspešno sačuvan!");
+      alert("Vizual je uspješno sačuvan i spreman za link!");
     }
   };
 
   // Pametna logika za spajanje "Premium" i "Standard" banera
-  const spojiBanere = (baneri: any[]) => {
+  function spojiBanere(baneri: any[]) {
     let premiums: string[] = [];
     let standards: string[] = [];
     let ostali: string[] = [];
@@ -159,7 +165,7 @@ export default function Home() {
     let preostaliStandards = standards.map(s => `Standard ${s}`);
 
     return [...kombinovano, ...preostaliPremiums, ...preostaliStandards, ...ostali].join('\n');
-  };
+  }
 
   const generisiISacuvaj = async () => {
     let osnovniLink = podaci.link.trim();
