@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -8,7 +8,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
   const [podaci, setPodaci] = useState({ klijent: '', kampanja: '', period: '', napomena: '', link: '' });
-  const [formati, setFormati] = useState(['Premium 970x250px', 'Premium+Standard 300x250px', 'Premium+Standard 300x600px', 'Premium+Standard 320x100px']);
+  
+  // Pozicije / Formati sa mogućnošću štikliranja
+  const [formati, setFormati] = useState([
+    { ime: 'Premium 970x250px', izabran: true },
+    { ime: 'Premium+Standard 300x250px', izabran: true },
+    { ime: 'Premium+Standard 300x600px', izabran: true },
+    { ime: 'Premium+Standard 320x100px', izabran: true }
+  ]);
+
+  // Sajtovi / Brendovi sa mogućnošću štikliranja
   const [sajtovi, setSajtovi] = useState([
     { ime: 'Blic.rs', utm: '', izabran: true },
     { ime: 'Žena.rs', utm: 'zena.rs', izabran: true },
@@ -18,16 +27,46 @@ export default function Home() {
     { ime: 'Nekretnine.rs', utm: 'nekretnine.rs', izabran: true },
     { ime: 'Mojauto', utm: 'mojauto', izabran: true }
   ]);
+
   const [gotovMejl, setGotovMejl] = useState('');
   const [slikaUrl, setSlikaUrl] = useState('');
+  const [istorija, setIstorija] = useState<any[]>([]);
+
+  // Učitavanje starih kampanja pri pokretanju sajta
+  useEffect(() => {
+    ucitajIstoriju();
+    // Pokretanje čišćenja starih slika na Supabase-u pri svakom otvaranju alata
+    supabase.rpc('obrisi_stare_slike').then(() => console.log("Očišćene slike starije od 3 dana."));
+  }, []);
+
+  const ucitajIstoriju = async () => {
+    const { data, error } = await supabase
+      .from('kampanje')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (data) setIstorija(data);
+  };
 
   const handleChange = (e: any) => setPodaci({ ...podaci, [e.target.name]: e.target.value });
+
+  const handleFormatChange = (index: number) => {
+    const novi = [...formati];
+    novi[index].izabran = !novi[index].izabran;
+    setFormati(novi);
+  };
+
+  const handleSajtChange = (index: number) => {
+    const novi = [...sajtovi];
+    novi[index].izabran = !novi[index].izabran;
+    setSajtovi(novi);
+  };
 
   const handleUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
     
     const fileName = `${Date.now()}-${file.name}`;
+    // Upload u bucket 'kreative'
     const { data, error } = await supabase.storage.from('kreative').upload(fileName, file);
     
     if (error) {
@@ -35,7 +74,7 @@ export default function Home() {
     } else {
       const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl;
       setSlikaUrl(publicUrl);
-      alert("Vizual je uspešno sačuvan!");
+      alert("Vizual uspešno sačuvan u bazu podataka!");
     }
   };
 
@@ -43,13 +82,15 @@ export default function Home() {
     let osnovniLink = podaci.link.trim();
     if(osnovniLink.includes('?')) osnovniLink = osnovniLink.split('?')[0];
 
-    let formatiText = formati.join('\n');
+    // Uzimamo samo ŠTIKLIRANE formate
+    let aktivniFormati = formati.filter(f => f.izabran).map(f => f.ime).join('\n');
     let sajtoviText = '';
 
+    // Prolazimo samo kroz ŠTIKLIRANE sajtove
     sajtovi.filter(s => s.izabran).forEach(s => {
       let finalLink = osnovniLink;
       if(s.utm !== "") finalLink = `${osnovniLink}?utm_source=${s.utm}&utm_medium=referral&utm_campaign=${podaci.kampanja}`;
-      sajtoviText += `\n${s.ime}:\ndesktop+mobile plus app - ROS\n${formatiText}\nLink: ${finalLink}\n`;
+      sajtoviText += `\n${s.ime}:\ndesktop+mobile plus app - ROS\n${aktivniFormati}\nLink: ${finalLink}\n`;
     });
 
     let mejl = `Drage kolege,\n\nInfo za postavku kampanje je ispod:\n\nKlijent: ${podaci.klijent}\nKampanja: ${podaci.kampanja}\nPeriod: ${podaci.period}\n\n${podaci.napomena}\n${sajtoviText}`;
@@ -58,41 +99,106 @@ export default function Home() {
 
     setGotovMejl(mejl);
 
-    const { error } = await supabase.from('kampanje').insert([
+    // Upis u Supabase
+    await supabase.from('kampanje').insert([
       { klijent: podaci.klijent, kampanja: podaci.kampanja, period: podaci.period, generisani_mejl: mejl }
     ]);
 
-    if(error) console.error("Greška pri upisu u bazu:", error);
+    ucitajIstoriju(); // Osveži listu na dnu
+
+    // AUTOMATSKO OTVARANJE GMAIL DRAFTA
+    const naslovMejla = encodeURIComponent(`Postavka kampanje: ${podaci.klijent} - ${podaci.kampanja}`);
+    const tekstMejla = encodeURIComponent(mejl);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${naslovMejla}&body=${tekstMejla}`, '_blank');
   };
 
   return (
     <main className="min-h-screen p-8 bg-gray-50 text-gray-800">
-      <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-md">
-        <h1 className="text-2xl font-bold mb-6 text-blue-600">🚀 Generator Kampanja</h1>
+      <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-md mb-8">
+        <h1 className="text-2xl font-bold mb-6 text-blue-600">🚀 Napredni Generator Kampanja</h1>
         
+        {/* Unos podataka */}
         <div className="grid grid-cols-2 gap-4 mb-4">
           <input className="border p-2 rounded w-full" name="klijent" placeholder="Klijent (npr. Ringier)" onChange={handleChange} />
           <input className="border p-2 rounded w-full" name="kampanja" placeholder="Kampanja (npr. Vlado)" onChange={handleChange} />
-          <input className="border p-2 rounded w-full" name="period" placeholder="Period" onChange={handleChange} />
+          <input className="border p-2 rounded w-full" name="period" placeholder="Period (npr. 29.01. - 10.02.2025.)" onChange={handleChange} />
           <input className="border p-2 rounded w-full" name="link" placeholder="Glavni Link (bez UTM)" onChange={handleChange} />
         </div>
-        <input className="border p-2 rounded w-full mb-6" name="napomena" placeholder="Napomena (Frekvencija...)" onChange={handleChange} />
+        <input className="border p-2 rounded w-full mb-6" name="napomena" placeholder="Napomena (Frekvencija i intenzitet...)" onChange={handleChange} />
 
-        <div className="mb-6 p-4 border border-dashed border-gray-400 rounded-lg bg-gray-50">
-          <p className="font-bold mb-2">Dodaj Vizual (Banner):</p>
-          <input type="file" onChange={handleUpload} className="w-full" />
+        {/* Štikliranje Pozicija / Formata */}
+        <div className="mb-6">
+          <p className="font-bold mb-2 text-gray-700">1. Odaberi Pozicije (Formate):</p>
+          <div className="grid grid-cols-2 gap-2 bg-gray-100 p-3 rounded">
+            {formati.map((f, i) => (
+              <label key={i} className="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" checked={f.izabran} onChange={() => handleFormatChange(i)} className="rounded text-blue-600 h-4 w-4" />
+                <span>{f.ime}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
-        <button onClick={generisiISacuvaj} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">
-          Generiši Mejl i Sačuvaj Kampanju
+        {/* Štikliranje Sajtova / Brendova */}
+        <div className="mb-6">
+          <p className="font-bold mb-2 text-gray-700">2. Odaberi Sajtove (Brendove):</p>
+          <div className="grid grid-cols-2 gap-2 bg-gray-100 p-3 rounded">
+            {sajtovi.map((s, i) => (
+              <label key={i} className="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" checked={s.izabran} onChange={() => handleSajtChange(i)} className="rounded text-blue-600 h-4 w-4" />
+                <span>{s.ime}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Upload vizuala */}
+        <div className="mb-6 p-4 border border-dashed border-gray-400 rounded-lg bg-gray-50">
+          <p className="font-bold mb-2">3. Dodaj Vizual (Banner):</p>
+          <input type="file" onChange={handleUpload} className="w-full" />
+          {slikaUrl && <p className="text-xs text-green-600 mt-2">Slika je spremna i biće obrisana za 3 dana.</p>}
+        </div>
+
+        {/* Dugme akcije */}
+        <button onClick={generisiISacuvaj} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-lg">
+          Generiši Mejl, Sačuvaj i Otvori u Gmail-u ✉️
         </button>
 
+        {/* Prikaz teksta na ekranu */}
         {gotovMejl && (
           <div className="mt-8">
-            <h2 className="font-bold mb-2">Gotov tekst za mejl:</h2>
-            <textarea readOnly className="w-full h-96 p-4 border rounded bg-gray-100" value={gotovMejl} />
+            <h2 className="font-bold mb-2">Pregled teksta kampanje:</h2>
+            <textarea readOnly className="w-full h-80 p-4 border rounded bg-gray-100 text-sm font-mono" value={gotovMejl} />
           </div>
         )}
+      </div>
+
+      {/* ISTORIJA KAMPANJA NA DNU */}
+      <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-md">
+        <h2 className="text-xl font-bold mb-4 text-gray-700">🕒 Istorija Prethodnih Kampanja</h2>
+        <div className="space-y-4">
+          {istorija.length === 0 ? (
+            <p className="text-gray-400 italic">Nema sačuvanih kampanja u bazi podataka.</p>
+          ) : (
+            istorija.map((k, i) => (
+              <div key={i} className="border-b pb-4 flex justify-between items-center bg-gray-50 p-3 rounded">
+                <div>
+                  <p className="font-bold text-blue-600">{k.klijent} - {k.kampanja}</p>
+                  <p className="text-xs text-gray-500">Period: {k.period} | Kreirano: {new Date(k.created_at).toLocaleDateString('sr-RS')}</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(k.generisani_mejl);
+                    alert("Tekst kampanje je kopiran u vaš clipboard!");
+                  }}
+                  className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-bold hover:bg-gray-300 transition"
+                >
+                  📋 Kopiraj Tekst
+                </button>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </main>
   );
