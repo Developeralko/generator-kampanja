@@ -119,19 +119,29 @@ export default function Home() {
   const handleUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
-    
-    // NOVO: Čistimo ime fajla od razmaka i specijalnih karaktera da spriječimo grešku
+
+    // 1. DETEKTIV: Proveravamo da li Vercel uopšte vidi tvoju bazu
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === 'undefined') {
+      alert("CRVENI ALARM: Vercel ne vidi tvoj Supabase link! Moraš da proveriš Environment Variables i uradiš Redeploy.");
+      return;
+    }
+
+    // 2. POPRAVKA: Čistimo ime fajla od razmaka i naših slova (koji prave Invalid Path grešku)
     const cistoIme = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const fileName = `${Date.now()}-${cistoIme}`;
     
-    const { data, error } = await supabase.storage.from('kreative').upload(fileName, file);
-    
-    if (error) {
-      alert("Greška pri uploadu: " + error.message);
-    } else {
-      const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl;
-      setSlikaUrl(publicUrl);
-      alert("Vizual je uspješno sačuvan i spreman za link!");
+    try {
+      const { data, error } = await supabase.storage.from('kreative').upload(fileName, file);
+      
+      if (error) {
+        alert("Greška iz baze: " + error.message);
+      } else {
+        const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl;
+        setSlikaUrl(publicUrl);
+        alert("Vizual je uspešno sačuvan!");
+      }
+    } catch (err: any) {
+      alert("Sistemska greška: " + err.message);
     }
   };
 
