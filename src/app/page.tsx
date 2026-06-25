@@ -7,7 +7,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Home() {
-  // Izbacili smo 'period' i dodali 'datumOd' i 'datumDo'
   const [podaci, setPodaci] = useState({ klijent: '', kampanja: '', datumOd: '', datumDo: '', napomena: '', link: '' });
   
   const [sajtovi, setSajtovi] = useState([
@@ -169,7 +168,6 @@ export default function Home() {
     return [...kombinovano, ...preostaliPremiums, ...preostaliStandards, ...ostali].join('\n');
   };
 
-  // Pomoćna funkcija koja pretvara YYYY-MM-DD iz kalendara u naš format DD.MM.YYYY.
   const formatirajDatum = (datum: string) => {
     if (!datum) return '';
     const [godina, mesec, dan] = datum.split('-');
@@ -199,7 +197,6 @@ export default function Home() {
       sajtoviText += sajtDeo;
     });
 
-    // Kreiramo string za period od dva odabrana datuma
     let finalniPeriod = '';
     if (podaci.datumOd && podaci.datumDo) {
       finalniPeriod = `${formatirajDatum(podaci.datumOd)} - ${formatirajDatum(podaci.datumDo)}`;
@@ -234,23 +231,29 @@ export default function Home() {
       <div className="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-md mb-8">
         <h1 className="text-2xl font-bold mb-6 text-blue-600">🚀 Napredni Generator Kampanja</h1>
         
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <input className="border p-2 rounded w-full" name="klijent" placeholder="Klijent" onChange={handleChange} />
-          <input className="border p-2 rounded w-full" name="kampanja" placeholder="Kampanja" onChange={handleChange} />
-          
-          {/* Novi UI za biranje raspona datuma */}
+        {/* Potpuno redizajniran raspored unosa: 2 reda po 3 čiste kolone */}
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <input className="border p-2 rounded w-full text-sm" name="klijent" placeholder="Klijent" onChange={handleChange} />
+          <input className="border p-2 rounded w-full text-sm" name="kampanja" placeholder="Kampanja" onChange={handleChange} />
+          <input className="border p-2 rounded w-full text-sm" name="link" placeholder="Glavni Link (bez UTM)" onChange={handleChange} />
+        </div>
+
+        {/* Drugi red sa odvojenim i jasnim kalendarima */}
+        <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="flex items-center space-x-2 border p-2 rounded bg-white w-full">
-            <span className="text-gray-400 text-sm font-bold">Od:</span>
-            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm" name="datumOd" onChange={handleChange} />
-            <span className="text-gray-400 text-sm font-bold">Do:</span>
-            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm" name="datumDo" onChange={handleChange} />
+            <span className="text-gray-400 text-xs font-bold uppercase">Od:</span>
+            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm cursor-pointer" name="datumOd" onChange={handleChange} />
+          </div>
+          
+          <div className="flex items-center space-x-2 border p-2 rounded bg-white w-full">
+            <span className="text-gray-400 text-xs font-bold uppercase">Do:</span>
+            <input type="date" className="w-full outline-none bg-transparent text-gray-600 text-sm cursor-pointer" name="datumDo" onChange={handleChange} />
           </div>
 
-          <input className="border p-2 rounded w-full" name="link" placeholder="Glavni Link (bez UTM)" onChange={handleChange} />
+          <input className="border p-2 rounded w-full text-sm" name="napomena" placeholder="Napomena (Frekvencija...)" onChange={handleChange} />
         </div>
-        <input className="border p-2 rounded w-full mb-8" name="napomena" placeholder="Napomena (Frekvencija i intenzitet...)" onChange={handleChange} />
 
-        <h2 className="font-bold text-lg mb-4 text-gray-800 border-b pb-2">📍 Izbor Sajtova i Pozicija</h2>
+        <h2 className="font-bold text-lg mb-4 text-gray-800 border-b pb-2 mt-6">📍 Izbor Sajtova i Pozicija</h2>
         
         <div className="space-y-4 mb-8">
           {sajtovi.map((sajt, sIndex) => (
@@ -316,7 +319,7 @@ export default function Home() {
           {istorija.map((k, i) => (
             <div key={i} className="border-b pb-4 flex justify-between items-center bg-gray-50 p-3 rounded">
               <div>
-                <p className="font-bold text-blue-600">{k.klijent} - {k.kampanja}</p>
+                <p className="font-bold text-blue-600">{k.klijent} - {k.campanja || k.kampanja}</p>
                 <p className="text-xs text-gray-500">Period: {k.period} | Kreirano: {new Date(k.created_at).toLocaleDateString('bs-BA')}</p>
               </div>
               <button 
