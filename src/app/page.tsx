@@ -9,10 +9,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export default function Home() {
   const [podaci, setPodaci] = useState({ klijent: '', kampanja: '', period: '', napomena: '', link: '' });
   
-  // Nova, napredna struktura sajtova sa odvojenim Desktop i Mobile banerima
+  // Dodali smo "blic.rs" utm tag
   const [sajtovi, setSajtovi] = useState([
     {
-      ime: 'Blic.rs', utm: '', izabran: true,
+      ime: 'Blic.rs', utm: 'blic.rs', izabran: true,
       desktop: [
         { ime: 'Bilboard 970x250', izabran: false }, { ime: 'Premium 300x250', izabran: false },
         { ime: 'Premium 300x600', izabran: false }, { ime: 'Standard 300x250', izabran: false },
@@ -92,7 +92,8 @@ export default function Home() {
   ]);
 
   const [gotovMejl, setGotovMejl] = useState('');
-  const [slikaUrl, setSlikaUrl] = useState('');
+  // Mijenjamo string u Array stringova kako bi pamtili više slika
+  const [slikeUrls, setSlikeUrls] = useState<string[]>([]);
   const [istorija, setIstorija] = useState<any[]>([]);
 
   useEffect(() => { ucitajIstoriju(); }, []);
@@ -116,44 +117,40 @@ export default function Home() {
     setSajtovi(novi);
   };
 
+  // Nova funkcija za upload više fajlova odjednom
   const handleUpload = async (e: any) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    // 1. DETEKTIV: Proveravamo da li Vercel uopšte vidi tvoju bazu
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === 'undefined') {
-      alert("CRVENI ALARM: Vercel ne vidi tvoj Supabase link! Moraš da proveriš Environment Variables i uradiš Redeploy.");
-      return;
-    }
+    let uspjesnoSacuvanih: string[] = [...slikeUrls];
 
-    // 2. POPRAVKA: Čistimo ime fajla od razmaka i naših slova (koji prave Invalid Path grešku)
-    const cistoIme = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const fileName = `${Date.now()}-${cistoIme}`;
-    
-    try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const cistoIme = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const fileName = `${Date.now()}-${cistoIme}`;
+
       const { data, error } = await supabase.storage.from('kreative').upload(fileName, file);
-      
+
       if (error) {
-        alert("Greška iz baze: " + error.message);
+        alert(`Greška pri uploadu slike ${file.name}: ` + error.message);
       } else {
-        const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl;
-        setSlikaUrl(publicUrl);
-        alert("Vizual je uspešno sačuvan!");
+        // Magija: dodajemo ?download na kraj kako bi pretraživač skidao fajl umjesto da ga otvara
+        const publicUrl = supabase.storage.from('kreative').getPublicUrl(fileName).data.publicUrl + `?download=${cistoIme}`;
+        uspjesnoSacuvanih.push(publicUrl);
       }
-    } catch (err: any) {
-      alert("Sistemska greška: " + err.message);
     }
+
+    setSlikeUrls(uspjesnoSacuvanih);
+    alert(`Uspješno otpremljeno ${files.length} vizuala!`);
   };
 
-  // Pametna logika za spajanje "Premium" i "Standard" banera
-  function spojiBanere(baneri: any[]) {
+  const spojiBanere = (baneri: any[]) => {
     let premiums: string[] = [];
     let standards: string[] = [];
     let ostali: string[] = [];
 
-    // Razdvajanje
     baneri.forEach(b => {
-      let ime = b.ime.trim().replace(/px/g, ''); // cistimo px
+      let ime = b.ime.trim().replace(/px/g, '');
       if (ime.startsWith('Premium ')) premiums.push(ime.replace('Premium ', ''));
       else if (ime.startsWith('Standard ')) standards.push(ime.replace('Standard ', ''));
       else ostali.push(ime);
@@ -162,20 +159,18 @@ export default function Home() {
     let kombinovano: string[] = [];
     let preostaliPremiums: string[] = [];
 
-    // Spajanje
     premiums.forEach(p => {
       if (standards.includes(p)) {
         kombinovano.push(`Premium + Standard ${p}`);
-        standards = standards.filter(s => s !== p); // Brisanje iskoriscenog standarda
+        standards = standards.filter(s => s !== p);
       } else {
         preostaliPremiums.push(`Premium ${p}`);
       }
     });
 
     let preostaliStandards = standards.map(s => `Standard ${s}`);
-
     return [...kombinovano, ...preostaliPremiums, ...preostaliStandards, ...ostali].join('\n');
-  }
+  };
 
   const generisiISacuvaj = async () => {
     let osnovniLink = podaci.link.trim();
@@ -187,7 +182,7 @@ export default function Home() {
       let deskIzabrani = s.desktop.filter(b => b.izabran);
       let mobIzabrani = s.mobile.filter(b => b.izabran);
 
-      if (deskIzabrani.length === 0 && mobIzabrani.length === 0) return; // Preskoci ako nema banera
+      if (deskIzabrani.length === 0 && mobIzabrani.length === 0) return;
 
       let finalLink = osnovniLink;
       if(s.utm !== "") finalLink = `${osnovniLink}?utm_source=${s.utm}&utm_medium=referral&utm_campaign=${podaci.kampanja}`;
@@ -201,7 +196,14 @@ export default function Home() {
     });
 
     let mejl = `Drage kolege,\n\nInfo za postavku kampanje je ispod:\n\nKlijent: ${podaci.klijent}\nKampanja: ${podaci.kampanja}\nPeriod: ${podaci.period}\n\n${podaci.napomena}\n${sajtoviText}`;
-    if (slikaUrl) mejl += `\nLink ka vizualu: ${slikaUrl}`;
+    
+    // Dodavanje više vizuala
+    if (slikeUrls.length > 0) {
+      mejl += `\n\nLinkovi za preuzimanje vizuala (kliknite na link za direktan download):\n`;
+      slikeUrls.forEach((url, i) => {
+        mejl += `${i + 1}. vizual: ${url}\n`;
+      });
+    }
 
     setGotovMejl(mejl);
 
@@ -231,20 +233,16 @@ export default function Home() {
 
         <h2 className="font-bold text-lg mb-4 text-gray-800 border-b pb-2">📍 Izbor Sajtova i Pozicija</h2>
         
-        {/* Generisanje lista sajtova i banera */}
         <div className="space-y-4 mb-8">
           {sajtovi.map((sajt, sIndex) => (
             <div key={sIndex} className="border rounded-lg overflow-hidden">
-              {/* Zaglavlje sajta (Check/Uncheck) */}
               <div className={`p-3 font-bold flex items-center space-x-3 cursor-pointer ${sajt.izabran ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`} onClick={() => handleSajtToggle(sIndex)}>
                 <input type="checkbox" checked={sajt.izabran} readOnly className="w-5 h-5 cursor-pointer" />
                 <span>{sajt.ime}</span>
               </div>
 
-              {/* Telo sa banerima (Prikazuje se samo ako je sajt štikliran) */}
               {sajt.izabran && (
                 <div className="p-4 grid grid-cols-2 gap-6 bg-white">
-                  {/* Desktop kolona */}
                   <div>
                     <h3 className="font-bold text-sm text-gray-500 mb-2 uppercase tracking-wide border-b pb-1">🖥️ Desktop</h3>
                     <div className="space-y-2">
@@ -256,8 +254,6 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
-
-                  {/* Mobile kolona */}
                   <div>
                     <h3 className="font-bold text-sm text-gray-500 mb-2 uppercase tracking-wide border-b pb-1">📱 Mobile</h3>
                     <div className="space-y-2">
@@ -275,9 +271,13 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Dodali smo 'multiple' opciju u input za fajlove */}
         <div className="mb-6 p-4 border border-dashed border-gray-400 rounded-lg bg-gray-50">
-          <p className="font-bold mb-2">Dodaj Vizual (Banner):</p>
-          <input type="file" onChange={handleUpload} className="w-full" />
+          <p className="font-bold mb-2">Dodaj Vizuale (možeš odabrati više slika istovremeno):</p>
+          <input type="file" multiple onChange={handleUpload} className="w-full" />
+          {slikeUrls.length > 0 && (
+            <p className="text-sm font-bold text-green-600 mt-2">✅ Uspješno spremno vizuala za slanje: {slikeUrls.length}</p>
+          )}
         </div>
 
         <button onClick={generisiISacuvaj} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-lg">
@@ -299,7 +299,7 @@ export default function Home() {
             <div key={i} className="border-b pb-4 flex justify-between items-center bg-gray-50 p-3 rounded">
               <div>
                 <p className="font-bold text-blue-600">{k.klijent} - {k.kampanja}</p>
-                <p className="text-xs text-gray-500">Period: {k.period} | Kreirano: {new Date(k.created_at).toLocaleDateString('sr-RS')}</p>
+                <p className="text-xs text-gray-500">Period: {k.period} | Kreirano: {new Date(k.created_at).toLocaleDateString('bs-BA')}</p>
               </div>
               <button 
                 onClick={() => { navigator.clipboard.writeText(k.generisani_mejl); alert("Kopirano!"); }}
